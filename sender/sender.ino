@@ -1,24 +1,74 @@
 #include <ESP8266WiFi.h>
 #include <espnow.h>
+#include <EEPROM.h>
 
-const uint8_t PAIR_ID  = 3;        // 1–6, must match the paired receiver
-const uint8_t RADIO_CH = 1;        // Wi-Fi radio channel, same on all 12 boards
+// --- shared block (keep identical in receiver) ---
+const uint8_t RADIO_CH = 1;             // Wi-Fi radio channel, fixed
+const uint8_t DEFAULT_ID = 0;
+const uint32_t SCAN_WINDOW_MS = 10000;
+const uint8_t ID_MAGIC = 0x5A;          // marks a valid saved ID
 
-const int BEAM_PIN  = D5;          // assumed: LOW = beam broken
-const int RELAY_PIN = D1;          // assumed: HIGH = outlet on
-const int POT_PIN   = A0;          // D1 mini's only ADC
-
-const uint32_t MIN_MS = 5UL * 1000;
-const uint32_t MAX_MS = 300UL * 1000;
-const uint32_t SEND_INTERVAL_MS = 100;
-
-uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t pairId = DEFAULT_ID;
 
 typedef struct __attribute__((packed)) {
   uint8_t magic;   // 0xA5
   uint8_t id;
   uint8_t on;
 } Msg;
+
+uint8_t loadId() {
+  EEPROM.begin(4);
+  if (EEPROM.read(0) == ID_MAGIC && EEPROM.read(1) <= 9) return EEPROM.read(1);
+  return DEFAULT_ID;
+}
+
+void saveId(uint8_t id) {
+  if (EEPROM.read(0) == ID_MAGIC && EEPROM.read(1) == id) return;  // unchanged, skip flash write
+  EEPROM.write(0, ID_MAGIC);
+  EEPROM.write(1, id);
+  EEPROM.commit();
+}
+
+// Returns 0–9 if "set_channel_to_X" is seen within the window, else -1
+int scanForId() {
+  uint32_t start = millis();
+  while (millis() - start < SCAN_WINDOW_MS) {
+    int n = WiFi.scanNetworks();
+    for (int i = 0; i < n; i++) {
+      String s = WiFi.SSID(i);
+      if (s.length() == 16 && s.startsWith("set_channel_to_")) {
+        char c = s.charAt(15);
+        if (c >= '0' && c <= '9') return c - '0';
+      }
+    }
+  }
+  return -1;
+}
+
+void initRadio() {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+
+  pairId = loadId();
+  int found = scanForId();
+  if (found >= 0) {
+    pairId = found;
+    saveId(pairId);
+  }
+
+  wifi_set_channel(RADIO_CH);   // after scanning, since the scan hops channels
+}
+// --- end shared block ---
+
+const int BEAM_PIN  = D5;          // assumed: LOW = beam broken
+const int RELAY_PIN = D1;          // assumed: HIGH = outlet on
+const int POT_PIN   = A0;
+
+const uint32_t MIN_MS = 1UL * 1000;
+const uint32_t MAX_MS = 15UL * 1000;
+const uint32_t SEND_INTERVAL_MS = 100;
+
+uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 bool outletOn = false;
 uint32_t onUntil = 0;
@@ -30,7 +80,7 @@ uint32_t potDelayMs() {
 }
 
 void sendState() {
-  Msg m = {0xA5, PAIR_ID, (uint8_t)(outletOn ? 1 : 0)};
+  Msg m = {0xA5, pairId, (uint8_t)(outletOn ? 1 : 0)};
   esp_now_send(BROADCAST, (uint8_t *)&m, sizeof(m));
   lastSend = millis();
 }
@@ -40,9 +90,7 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  wifi_set_channel(RADIO_CH);
+  initRadio();
 
   if (esp_now_init() != 0) ESP.restart();
   esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
@@ -53,7 +101,7 @@ void loop() {
   uint32_t now = millis();
   bool wasOn = outletOn;
 
-  if (digitalRead(BEAM_PIN) == LOW) {          // broken: start/restart timer
+  if (digitalRead(BEAM_PIN) == LOW) {
     onUntil = now + potDelayMs();
     outletOn = true;
   }
