@@ -45,6 +45,28 @@ int scanForId() {
   return -1;
 }
 
+const int RELAY_PIN = D1;
+const uint32_t FLASH_ON_MS  = 400;
+const uint32_t FLASH_OFF_MS = 400;
+const uint32_t LONG_MS      = 2000;
+
+void flashId(uint8_t id) {
+  digitalWrite(RELAY_PIN, LOW);
+  delay(1000);                         // gap before the count
+  if (id == 0) {                       // 0 = one long flash
+    digitalWrite(RELAY_PIN, HIGH);
+    delay(LONG_MS);
+    digitalWrite(RELAY_PIN, LOW);
+    return;
+  }
+  for (uint8_t i = 0; i < id; i++) {
+    digitalWrite(RELAY_PIN, HIGH);
+    delay(FLASH_ON_MS);
+    digitalWrite(RELAY_PIN, LOW);
+    delay(FLASH_OFF_MS);
+  }
+}
+
 void initRadio() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -54,6 +76,7 @@ void initRadio() {
   if (found >= 0) {
     pairId = found;
     saveId(pairId);
+    flashId(pairId);
   }
 
   wifi_set_channel(RADIO_CH);   // after scanning, since the scan hops channels
@@ -61,7 +84,6 @@ void initRadio() {
 // --- end shared block ---
 
 const int BEAM_PIN  = D5;          // assumed: LOW = beam broken
-const int RELAY_PIN = D1;          // assumed: HIGH = outlet on
 const int POT_PIN   = A0;
 
 const uint32_t MIN_MS = 1UL * 1000;
