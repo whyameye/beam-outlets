@@ -43,3 +43,7 @@ With no setup network visible, a board uses its saved group, or group 0 if never
 ## Status
 
 Not yet compiled or tested on hardware.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
