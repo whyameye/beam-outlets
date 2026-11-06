@@ -1,5 +1,7 @@
 # Beam-triggered wireless outlets
 
+Built for Lawrence Lights, a fundraiser for [Sertoma](https://lawrencesertoma.org/).
+
 Each break-beam sender switches its own outlet for a time set by a pot (1–15 s) and broadcasts its on/off state over ESP-NOW. Receivers in the same group mirror that state on their outlet.
 
 Hardware: Wemos D1 mini (ESP8266) on every board. Six groups planned, each with one sender and one receiver.
