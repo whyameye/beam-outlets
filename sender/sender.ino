@@ -3,41 +3,41 @@
 #include <EEPROM.h>
 
 // --- shared block (keep identical in receiver) ---
-const uint8_t RADIO_CH = 1;             // Wi-Fi radio channel, fixed
-const uint8_t DEFAULT_ID = 0;
+const uint8_t RADIO_CH = 1;             // Wi-Fi radio channel, fixed, same on all boards
+const uint8_t DEFAULT_GROUP = 0;
 const uint32_t SCAN_WINDOW_MS = 10000;
-const uint8_t ID_MAGIC = 0x5A;          // marks a valid saved ID
+const uint8_t GROUP_MAGIC = 0x5A;       // marks a valid saved group
 
-uint8_t pairId = DEFAULT_ID;
+uint8_t groupNum = DEFAULT_GROUP;
 
 typedef struct __attribute__((packed)) {
   uint8_t magic;   // 0xA5
-  uint8_t id;
+  uint8_t group;
   uint8_t on;
 } Msg;
 
-uint8_t loadId() {
+uint8_t loadGroup() {
   EEPROM.begin(4);
-  if (EEPROM.read(0) == ID_MAGIC && EEPROM.read(1) <= 9) return EEPROM.read(1);
-  return DEFAULT_ID;
+  if (EEPROM.read(0) == GROUP_MAGIC && EEPROM.read(1) <= 9) return EEPROM.read(1);
+  return DEFAULT_GROUP;
 }
 
-void saveId(uint8_t id) {
-  if (EEPROM.read(0) == ID_MAGIC && EEPROM.read(1) == id) return;  // unchanged, skip flash write
-  EEPROM.write(0, ID_MAGIC);
-  EEPROM.write(1, id);
+void saveGroup(uint8_t g) {
+  if (EEPROM.read(0) == GROUP_MAGIC && EEPROM.read(1) == g) return;  // unchanged, skip flash write
+  EEPROM.write(0, GROUP_MAGIC);
+  EEPROM.write(1, g);
   EEPROM.commit();
 }
 
-// Returns 0–9 if "set_channel_to_X" is seen within the window, else -1
-int scanForId() {
+// Returns 0–9 if "set_group_to_X" is seen within the window, else -1
+int scanForGroup() {
   uint32_t start = millis();
   while (millis() - start < SCAN_WINDOW_MS) {
     int n = WiFi.scanNetworks();
     for (int i = 0; i < n; i++) {
       String s = WiFi.SSID(i);
-      if (s.length() == 16 && s.startsWith("set_channel_to_")) {
-        char c = s.charAt(15);
+      if (s.length() == 14 && s.startsWith("set_group_to_")) {
+        char c = s.charAt(13);
         if (c >= '0' && c <= '9') return c - '0';
       }
     }
@@ -50,16 +50,16 @@ const uint32_t FLASH_ON_MS  = 400;
 const uint32_t FLASH_OFF_MS = 400;
 const uint32_t LONG_MS      = 2000;
 
-void flashId(uint8_t id) {
+void flashGroup(uint8_t g) {
   digitalWrite(RELAY_PIN, LOW);
   delay(1000);                         // gap before the count
-  if (id == 0) {                       // 0 = one long flash
+  if (g == 0) {                        // 0 = one long flash
     digitalWrite(RELAY_PIN, HIGH);
     delay(LONG_MS);
     digitalWrite(RELAY_PIN, LOW);
     return;
   }
-  for (uint8_t i = 0; i < id; i++) {
+  for (uint8_t i = 0; i < g; i++) {
     digitalWrite(RELAY_PIN, HIGH);
     delay(FLASH_ON_MS);
     digitalWrite(RELAY_PIN, LOW);
@@ -71,12 +71,12 @@ void initRadio() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
 
-  pairId = loadId();
-  int found = scanForId();
+  groupNum = loadGroup();
+  int found = scanForGroup();
   if (found >= 0) {
-    pairId = found;
-    saveId(pairId);
-    flashId(pairId);
+    groupNum = found;
+    saveGroup(groupNum);
+    flashGroup(groupNum);
   }
 
   wifi_set_channel(RADIO_CH);   // after scanning, since the scan hops channels
@@ -102,7 +102,7 @@ uint32_t potDelayMs() {
 }
 
 void sendState() {
-  Msg m = {0xA5, pairId, (uint8_t)(outletOn ? 1 : 0)};
+  Msg m = {0xA5, groupNum, (uint8_t)(outletOn ? 1 : 0)};
   esp_now_send(BROADCAST, (uint8_t *)&m, sizeof(m));
   lastSend = millis();
 }
