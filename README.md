@@ -6,6 +6,13 @@ Each break-beam sender switches its own outlet for a time set by a pot (1–15 s
 
 Hardware: Wemos D1 mini (ESP8266) on every board. Six groups planned, each with one sender and one receiver.
 
+## Dependencies
+
+| Sketch | Board package (Boards Manager) | Board to select | Libraries (Library Manager) |
+|---|---|---|---|
+| `beam_outlet/` and `tests/espnow_rx_test/` | **esp8266** by ESP8266 Community (needs the extra Boards Manager URL below) | LOLIN(WEMOS) D1 R2 & mini | None. `ESP8266WiFi`, `espnow` and `EEPROM` come with the board package |
+| `group_setter/` | **esp32** by Espressif Systems | ESP32C6 Dev Module | **GFX Library for Arduino** by Moon On Our Nation (provides `Arduino_GFX_Library.h`). Adafruit GFX is a different library and will not work |
+
 ## Flashing
 
 One sketch, `beam_outlet/beam_outlet.ino`, holds both roles. Before uploading to a board, uncomment exactly one of these lines at the top:
@@ -36,7 +43,7 @@ With no setup network visible, a board uses its saved group, or group 0 if never
 
 `group_setter/group_setter.ino` turns an ESP32-C6-GEEK into a setup-network broadcaster. It broadcasts `set_group_to_X` and shows the group on its screen. Press BOOT to step to the next group (0–9, wrapping). Unplug it when done.
 
-Arduino IDE: install the ESP32 board package, select **ESP32C6 Dev Module**, set Tools → USB CDC On Boot: **Enabled** for serial output, and install **GFX Library for Arduino** from Library Manager.
+Arduino IDE: install the ESP32 board package, select **ESP32C6 Dev Module**, set Tools → USB CDC On Boot: **Enabled** for serial output, and install **GFX Library for Arduino** by Moon On Our Nation from Library Manager (not Adafruit GFX).
 
 LCD pins (SCLK 1, MOSI 2, DC 3, RST 4, CS 5) come from a Home Assistant community config, not from Waveshare's docs, and may differ between board batches. BOOT (GPIO 9) and the backlight (GPIO 6) are from Waveshare's Arduino docs. If the screen stays blank, check the serial output: the setter still broadcasts without a display.
 
