@@ -167,9 +167,23 @@ void onSent(uint8_t *mac, uint8_t status) {
   if (status == 0) txOk++; else txFail++;
 }
 
+// The ESP8266's ADC is shared with the Wi-Fi radio: calling analogRead()
+// continuously (as loop() would while the beam is broken) stops transmission.
+// Read the pot at most every POT_READ_MS and reuse the cached value.
+const uint32_t POT_READ_MS = 100;
+uint32_t potCacheMs = MIN_MS;
+uint32_t lastPotRead = 0;
+bool potRead = false;
+
 uint32_t potDelayMs() {
-  int raw = analogRead(POT_PIN);         // 0–1023
-  return MIN_MS + (uint32_t)((uint64_t)(MAX_MS - MIN_MS) * raw / 1023);
+  uint32_t now = millis();
+  if (!potRead || now - lastPotRead >= POT_READ_MS) {
+    int raw = analogRead(POT_PIN);       // 0–1023
+    potCacheMs = MIN_MS + (uint32_t)((uint64_t)(MAX_MS - MIN_MS) * raw / 1023);
+    lastPotRead = now;
+    potRead = true;
+  }
+  return potCacheMs;
 }
 
 void sendState() {
