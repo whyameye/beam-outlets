@@ -32,6 +32,14 @@ No separate libraries are installed. `ESP8266WiFi.h`, `espnow.h` and `EEPROM.h` 
 
 With no setup network visible, a board uses its saved group, or group 0 if never set. Configure one group at a time: if several setup networks are visible, the first found wins.
 
+### Group setter (optional): Waveshare ESP32-C6-GEEK
+
+`group_setter/group_setter.ino` turns an ESP32-C6-GEEK into a setup-network broadcaster. It broadcasts `set_group_to_X` and shows the group on its screen. Press BOOT to step to the next group (0–9, wrapping). Unplug it when done.
+
+Arduino IDE: install the ESP32 board package, select **ESP32C6 Dev Module**, set Tools → USB CDC On Boot: **Enabled** for serial output, and install **GFX Library for Arduino** from Library Manager.
+
+LCD pins (SCLK 1, MOSI 2, DC 3, RST 4, CS 5) come from a Home Assistant community config, not from Waveshare's docs, and may differ between board batches. BOOT (GPIO 9) and the backlight (GPIO 6) are from Waveshare's Arduino docs. If the screen stays blank, check the serial output: the setter still broadcasts without a display.
+
 ## Wiring
 
 | Function | Pin | Notes |
