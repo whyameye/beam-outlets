@@ -8,6 +8,20 @@
 #error "Define exactly one of ROLE_SENDER or ROLE_RECEIVER"
 #endif
 
+// Serial debug output at 115200 baud. Set to 0 to disable.
+#define DEBUG 1
+#if DEBUG
+  #define DBG(...) Serial.printf(__VA_ARGS__)
+#else
+  #define DBG(...)
+#endif
+
+#ifdef ROLE_SENDER
+  const char *ROLE_NAME = "SENDER";
+#else
+  const char *ROLE_NAME = "RECEIVER";
+#endif
+
 #include <ESP8266WiFi.h>
 #include <espnow.h>
 #include <EEPROM.h>
@@ -56,7 +70,10 @@ int scanForGroup() {
       String s = WiFi.SSID(i);
       if (s.length() == 14 && s.startsWith("set_group_to_")) {
         char c = s.charAt(13);
-        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= '0' && c <= '9') {
+          DBG("[boot] saw SSID %s\n", s.c_str());
+          return c - '0';
+        }
       }
     }
   }
@@ -81,18 +98,39 @@ void flashGroup(uint8_t g) {
 }
 
 void initRadio() {
+#if DEBUG
+  Serial.begin(115200);
+  delay(100);
+#endif
+  DBG("\n[boot] role=%s\n", ROLE_NAME);
+
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
 
   groupNum = loadGroup();
+  DBG("[boot] saved group=%u, scanning %lu ms for set_group_to_X\n",
+      groupNum, (unsigned long)SCAN_WINDOW_MS);
   int found = scanForGroup();
   if (found >= 0) {
     groupNum = found;
     saveGroup(groupNum);
+    DBG("[boot] group set to %u and saved, flashing outlet\n", groupNum);
     flashGroup(groupNum);
+  } else {
+    DBG("[boot] no setup SSID seen, using group %u\n", groupNum);
   }
 
   wifi_set_channel(RADIO_CH);   // after scanning, since the scan hops channels
+  DBG("[boot] radio channel %u, MAC %s\n", RADIO_CH, WiFi.macAddress().c_str());
+}
+
+void startEspNow() {
+  if (esp_now_init() != 0) {
+    DBG("[boot] esp_now_init failed, restarting\n");
+    delay(100);
+    ESP.restart();
+  }
+  DBG("[boot] ESP-NOW ready\n");
 }
 
 // ===================== Sender =====================
@@ -129,23 +167,33 @@ void setup() {
 
   initRadio();
 
-  if (esp_now_init() != 0) ESP.restart();
+  startEspNow();
   esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
   esp_now_add_peer(BROADCAST, ESP_NOW_ROLE_SLAVE, RADIO_CH, NULL, 0);
 }
 
+bool lastBroken = false;
+
 void loop() {
   uint32_t now = millis();
   bool wasOn = outletOn;
+  bool broken = (digitalRead(BEAM_PIN) == LOW);
 
-  if (digitalRead(BEAM_PIN) == LOW) {    // broken: start/restart timer
-    onUntil = now + potDelayMs();
+  if (broken) {                          // broken: start/restart timer
+    uint32_t d = potDelayMs();
+    onUntil = now + d;
     outletOn = true;
+    if (!lastBroken) DBG("[sender] beam broken, delay %lu ms\n", (unsigned long)d);
+  } else if (lastBroken) {
+    DBG("[sender] beam clear\n");
   }
+  lastBroken = broken;
+
   if (outletOn && (int32_t)(now - onUntil) >= 0) outletOn = false;
 
   digitalWrite(RELAY_PIN, outletOn ? HIGH : LOW);
 
+  if (outletOn != wasOn) DBG("[sender] outlet %s, group %u\n", outletOn ? "ON" : "OFF", groupNum);
   if (outletOn != wasOn || now - lastSend >= SEND_INTERVAL_MS) sendState();
 }
 
@@ -158,14 +206,18 @@ const uint32_t TIMEOUT_MS = 1000;        // failsafe: off if sender goes silent
 
 volatile bool remoteOn = false;
 volatile uint32_t lastRx = 0;
+volatile uint16_t rxOurs = 0;            // packets for our group (debug count)
+volatile uint16_t rxOther = 0;           // other groups or unrecognized (debug count)
 
+// Runs in the Wi-Fi stack's context: no Serial output here.
 void onRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
-  if (len != sizeof(Msg)) return;
+  if (len != sizeof(Msg)) { rxOther++; return; }
   Msg m;
   memcpy(&m, data, sizeof(m));
-  if (m.magic != MSG_MAGIC || m.group != groupNum) return;   // not ours
+  if (m.magic != MSG_MAGIC || m.group != groupNum) { rxOther++; return; }   // not ours
   remoteOn = m.on;
   lastRx = millis();
+  rxOurs++;
 }
 
 void setup() {
@@ -174,14 +226,36 @@ void setup() {
 
   initRadio();
 
-  if (esp_now_init() != 0) ESP.restart();
+  startEspNow();
   esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
   esp_now_register_recv_cb(onRecv);
 }
 
+bool lastOn = false;
+uint32_t lastReport = 0;
+
 void loop() {
-  bool on = remoteOn && (millis() - lastRx < TIMEOUT_MS);
+  uint32_t now = millis();
+  bool fresh = (now - lastRx < TIMEOUT_MS);
+  bool on = remoteOn && fresh;
   digitalWrite(RELAY_PIN, on ? HIGH : LOW);
+
+  if (on != lastOn) {
+    DBG("[receiver] outlet %s%s, group %u\n", on ? "ON" : "OFF",
+        (!on && remoteOn && !fresh) ? " (timeout: sender silent)" : "", groupNum);
+    lastOn = on;
+  }
+
+#if DEBUG
+  if (now - lastReport >= 1000) {        // once per second
+    noInterrupts();
+    uint16_t ours = rxOurs, other = rxOther;
+    rxOurs = 0; rxOther = 0;
+    interrupts();
+    DBG("[receiver] last 1 s: %u packets for group %u, %u other\n", ours, groupNum, other);
+    lastReport = now;
+  }
+#endif
 }
 
 #endif

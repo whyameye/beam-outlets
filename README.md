@@ -40,6 +40,10 @@ With no setup network visible, a board uses its saved group, or group 0 if never
 | Beam sensor (sender) | D5 | Active LOW, internal pull-up. 3.3 V logic only |
 | Delay pot (sender) | A0 | Wiper to A0, ends to 3.3 V and GND |
 
+## Serial debug output
+
+115200 baud. Shows boot steps (saved group, setup SSID seen, final group, MAC), beam and outlet changes on the sender, and outlet changes plus a once-per-second packet count on the receiver. Set `#define DEBUG 0` at the top of the sketch to turn it off.
+
 ## Behavior
 
 - **Sender:** a beam break starts or restarts the timer. The sender broadcasts its state every 100 ms, and immediately on change. During the 10 s boot scan the beam is ignored and the outlet is off.
