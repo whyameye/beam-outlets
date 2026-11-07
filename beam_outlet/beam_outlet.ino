@@ -120,7 +120,14 @@ void initRadio() {
     DBG("[boot] no setup SSID seen, using group %u\n", groupNum);
   }
 
-  wifi_set_channel(RADIO_CH);   // after scanning, since the scan hops channels
+  // WiFi.scanNetworks() leaves the radio unable to receive ESP-NOW frames
+  // (sending still works). Cycling Wi-Fi off and back on restores reception;
+  // see tests/espnow_rx_test. Must happen before esp_now_init().
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+
+  wifi_set_channel(RADIO_CH);
   DBG("[boot] radio channel set %u, actual %u, MAC %s\n",
       RADIO_CH, wifi_get_channel(), WiFi.macAddress().c_str());
 }
@@ -183,6 +190,7 @@ void setup() {
   int r2 = esp_now_add_peer(BROADCAST, ESP_NOW_ROLE_SLAVE, RADIO_CH, NULL, 0);
   int r3 = esp_now_register_send_cb(onSent);
   DBG("[boot] set_self_role=%d add_peer=%d register_send_cb=%d (0 = ok)\n", r1, r2, r3);
+  (void)r1; (void)r2; (void)r3;          // unused when DEBUG is 0
 }
 
 bool lastBroken = false;
@@ -253,8 +261,10 @@ void setup() {
   initRadio();
 
   startEspNow();
-  esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
-  esp_now_register_recv_cb(onRecv);
+  int r1 = esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
+  int r2 = esp_now_register_recv_cb(onRecv);
+  DBG("[boot] set_self_role=%d register_recv_cb=%d (0 = ok)\n", r1, r2);
+  (void)r1; (void)r2;                    // unused when DEBUG is 0
 }
 
 bool lastOn = false;
