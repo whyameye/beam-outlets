@@ -15,7 +15,13 @@ One sketch, `beam_outlet/beam_outlet.ino`, holds both roles. Before uploading to
 //#define ROLE_RECEIVER
 ```
 
-Board setting in the Arduino IDE: an ESP8266 board package with "LOLIN(WEMOS) D1 R2 & mini" selected.
+### Arduino IDE setup (once per computer)
+
+No separate libraries are installed. `ESP8266WiFi.h`, `espnow.h` and `EEPROM.h` come from the ESP8266 board package (core). A "No such file or directory" error for any of them means the core isn't installed or an ESP8266 board isn't selected.
+
+1. File → Preferences → "Additional Board Manager URLs": add `https://arduino.esp8266.com/stable/package_esp8266com_index.json`
+2. Tools → Board → Boards Manager: search `esp8266`, install it.
+3. Tools → Board: select **LOLIN(WEMOS) D1 R2 & mini**.
 
 ## Setting a board's group (0–9)
 
