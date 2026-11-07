@@ -121,7 +121,8 @@ void initRadio() {
   }
 
   wifi_set_channel(RADIO_CH);   // after scanning, since the scan hops channels
-  DBG("[boot] radio channel %u, MAC %s\n", RADIO_CH, WiFi.macAddress().c_str());
+  DBG("[boot] radio channel set %u, actual %u, MAC %s\n",
+      RADIO_CH, wifi_get_channel(), WiFi.macAddress().c_str());
 }
 
 void startEspNow() {
@@ -149,6 +150,16 @@ bool outletOn = false;
 uint32_t onUntil = 0;
 uint32_t lastSend = 0;
 
+// Debug counters
+volatile uint16_t txOk = 0, txFail = 0;  // from send callback
+uint16_t txErr = 0;                      // esp_now_send() returned nonzero
+uint32_t lastReport = 0;
+
+// Runs in the Wi-Fi stack's context: no Serial output here.
+void onSent(uint8_t *mac, uint8_t status) {
+  if (status == 0) txOk++; else txFail++;
+}
+
 uint32_t potDelayMs() {
   int raw = analogRead(POT_PIN);         // 0–1023
   return MIN_MS + (uint32_t)((uint64_t)(MAX_MS - MIN_MS) * raw / 1023);
@@ -156,7 +167,7 @@ uint32_t potDelayMs() {
 
 void sendState() {
   Msg m = {MSG_MAGIC, groupNum, (uint8_t)(outletOn ? 1 : 0)};
-  esp_now_send(BROADCAST, (uint8_t *)&m, sizeof(m));
+  if (esp_now_send(BROADCAST, (uint8_t *)&m, sizeof(m)) != 0) txErr++;
   lastSend = millis();
 }
 
@@ -168,8 +179,10 @@ void setup() {
   initRadio();
 
   startEspNow();
-  esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
-  esp_now_add_peer(BROADCAST, ESP_NOW_ROLE_SLAVE, RADIO_CH, NULL, 0);
+  int r1 = esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
+  int r2 = esp_now_add_peer(BROADCAST, ESP_NOW_ROLE_SLAVE, RADIO_CH, NULL, 0);
+  int r3 = esp_now_register_send_cb(onSent);
+  DBG("[boot] set_self_role=%d add_peer=%d register_send_cb=%d (0 = ok)\n", r1, r2, r3);
 }
 
 bool lastBroken = false;
@@ -195,6 +208,19 @@ void loop() {
 
   if (outletOn != wasOn) DBG("[sender] outlet %s, group %u\n", outletOn ? "ON" : "OFF", groupNum);
   if (outletOn != wasOn || now - lastSend >= SEND_INTERVAL_MS) sendState();
+
+#if DEBUG
+  if (now - lastReport >= 1000) {        // once per second
+    noInterrupts();
+    uint16_t ok = txOk, fail = txFail;
+    txOk = 0; txFail = 0;
+    interrupts();
+    DBG("[sender] last 1 s: sent ok %u, fail %u, send error %u, channel %u\n",
+        ok, fail, txErr, wifi_get_channel());
+    txErr = 0;
+    lastReport = now;
+  }
+#endif
 }
 
 #endif
@@ -252,7 +278,8 @@ void loop() {
     uint16_t ours = rxOurs, other = rxOther;
     rxOurs = 0; rxOther = 0;
     interrupts();
-    DBG("[receiver] last 1 s: %u packets for group %u, %u other\n", ours, groupNum, other);
+    DBG("[receiver] last 1 s: %u packets for group %u, %u other, channel %u\n",
+        ours, groupNum, other, wifi_get_channel());
     lastReport = now;
   }
 #endif
