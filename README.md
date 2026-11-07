@@ -45,7 +45,7 @@ With no setup network visible, a board uses its saved group, or group 0 if never
 
 Arduino IDE: install the ESP32 board package, select **ESP32C6 Dev Module**, set Tools → USB CDC On Boot: **Enabled** for serial output, and install **GFX Library for Arduino** by Moon On Our Nation from Library Manager (not Adafruit GFX).
 
-LCD pins (SCLK 1, MOSI 2, DC 3, RST 4, CS 5) come from a Home Assistant community config, not from Waveshare's docs, and may differ between board batches. BOOT (GPIO 9) and the backlight (GPIO 6) are from Waveshare's Arduino docs. If the screen stays blank, check the serial output: the setter still broadcasts without a display.
+LCD pins (SCLK 1, MOSI 2, DC 3, RST 4, CS 5) come from a Home Assistant community config, not from Waveshare's docs. They worked on our board, but may differ between board batches. BOOT (GPIO 9) and the backlight (GPIO 6) are from Waveshare's Arduino docs. If the screen stays blank, check the serial output: the setter still broadcasts without a display.
 
 ## Wiring
 
@@ -67,7 +67,7 @@ LCD pins (SCLK 1, MOSI 2, DC 3, RST 4, CS 5) come from a Home Assistant communit
 
 ## Status
 
-Not yet compiled or tested on hardware.
+Tested on hardware (2026-11-07): one sender/receiver pair of D1 mini clones, and the group setter on an ESP32-C6-GEEK, including its display with the LCD pins and offsets above.
 
 ## License
 
